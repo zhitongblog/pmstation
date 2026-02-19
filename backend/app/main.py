@@ -16,11 +16,28 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
-    # Startup
-    async with engine.begin() as conn:
-        # Create tables if not exist (for development)
-        # In production, use Alembic migrations
-        await conn.run_sync(Base.metadata.create_all)
+    # Startup - try to connect to database with retries
+    import asyncio
+    max_retries = 5
+    retry_delay = 2
+
+    for attempt in range(max_retries):
+        try:
+            async with engine.begin() as conn:
+                # Create tables if not exist (for development)
+                # In production, use Alembic migrations
+                await conn.run_sync(Base.metadata.create_all)
+            print(f"Database connected successfully on attempt {attempt + 1}")
+            break
+        except Exception as e:
+            print(f"Database connection attempt {attempt + 1} failed: {e}")
+            if attempt < max_retries - 1:
+                print(f"Retrying in {retry_delay} seconds...")
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+            else:
+                print("Warning: Could not connect to database, starting without it")
+
     yield
     # Shutdown
     await engine.dispose()
