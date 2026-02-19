@@ -1,0 +1,79 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+*.egg-info/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Build outputs
+.next/
+dist/
+build/
+*.egg
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# Misc
+*.bak
+*.tmp
+.cache/
+
+# Playwright
+.playwright-mcp/
+
+# Windows reserved names
+nul
+con
+prn
+aux
+
+# Temp/debug files
+error.txt
+*.bak
+
+# Claude Code
+.claude/
+
+# Sensitive files - NEVER COMMIT
+client_secret*.json
+*.pem
+*.key
+
+# Generated images
+*.png
+*.jpg
+*.jpeg
+
+# Temp files
+temp_*.json
+*temp*.json

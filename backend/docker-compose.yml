@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: pmstation
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      APP_NAME: PMStation
+      DEBUG: "true"
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/pmstation
+      SECRET_KEY: kSONjPa6TWyMbfx7TxY7CuzFSAxHb3Dh7Qt69ueGxnU
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: "10080"
+      GOOGLE_CLIENT_ID: your-google-client-id.apps.googleusercontent.com
+      GOOGLE_CLIENT_SECRET: your-google-client-secret
+      GEMINI_API_KEY: your-gemini-api-key
+      CORS_ORIGINS: '["http://localhost:3000"]'
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  postgres_data:
