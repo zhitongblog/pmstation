@@ -2,6 +2,7 @@
 import json
 import base64
 import logging
+import os
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -14,11 +15,24 @@ from app.config import get_settings
 
 settings = get_settings()
 
-# Configure Gemini (legacy API)
-genai.configure(api_key=settings.gemini_api_key)
+# Get API key from settings or directly from environment
+api_key = settings.gemini_api_key or os.getenv("GEMINI_API_KEY", "")
+print(f"Gemini API key configured: {'Yes' if api_key else 'No'} (length: {len(api_key)})")
 
-# Configure new Gemini client for image generation
-_genai_client = genai_new.Client(api_key=settings.gemini_api_key)
+if not api_key:
+    print("WARNING: GEMINI_API_KEY is not set!")
+
+# Configure Gemini (legacy API)
+genai.configure(api_key=api_key)
+
+# Configure new Gemini client for image generation (lazy initialization)
+_genai_client = None
+
+def get_genai_client():
+    global _genai_client
+    if _genai_client is None and api_key:
+        _genai_client = genai_new.Client(api_key=api_key)
+    return _genai_client
 
 
 class GeminiClient:
@@ -134,8 +148,13 @@ class GeminiClient:
 
         try:
             # Run synchronous API call in thread pool to avoid blocking
+            client = get_genai_client()
+            if not client:
+                logger.error("Gemini client not initialized - API key missing")
+                return None
+
             def _generate():
-                return _genai_client.models.generate_content(
+                return client.models.generate_content(
                     model="gemini-3-pro-image-preview",
                     contents=prompt,
                     config=genai_new.types.GenerateContentConfig(
