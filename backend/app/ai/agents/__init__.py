@@ -5,6 +5,7 @@ from app.ai.agents.base import BaseAgent
 from app.ai.agents.direction_agent import DirectionAgent
 from app.ai.agents.feature_agent import FeatureAgent
 from app.ai.agents.demo_agent import DemoAgent
+from app.ai.agents.interactive_demo_agent import InteractiveDemoAgent
 from app.ai.agents.prd_agent import PRDAgent
 from app.ai.agents.testcase_agent import TestCaseAgent
 
@@ -31,6 +32,7 @@ __all__ = [
     "DirectionAgent",
     "FeatureAgent",
     "DemoAgent",
+    "InteractiveDemoAgent",
     "PRDAgent",
     "TestCaseAgent",
     "get_agent",

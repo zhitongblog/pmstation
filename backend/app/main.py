@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.api.v1 import auth, projects, stages, collaborators, notes
+from app.api.v1 import auth, projects, stages, collaborators, notes, demo
 from app.db.session import engine
 from app.models import Base
 
@@ -68,6 +68,7 @@ app.include_router(projects.router, prefix="/api/v1/projects", tags=["projects"]
 app.include_router(stages.router, prefix="/api/v1", tags=["stages"])
 app.include_router(collaborators.router, prefix="/api/v1", tags=["collaborators"])
 app.include_router(notes.router, prefix="/api/v1", tags=["notes"])
+app.include_router(demo.router, prefix="/api/v1", tags=["demo"])
 
 
 @app.get("/")

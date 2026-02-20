@@ -8,6 +8,8 @@ import type {
   Note,
   AuthResponse,
   PlatformSelection,
+  DemoProject,
+  DemoPage,
 } from '@/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002';
@@ -175,5 +177,36 @@ export const notesApi = {
     await api.delete(`/notes/${noteId}`);
   },
 };
+
+// Demo API
+export const demoApi = {
+  getStructure: async (projectId: string): Promise<DemoProject> => {
+    const { data } = await api.get(`/projects/${projectId}/demo/structure`);
+    return data;
+  },
+
+  getPage: async (projectId: string, pageId: string): Promise<DemoPage> => {
+    const { data } = await api.get(`/projects/${projectId}/demo/pages/${pageId}`);
+    return data;
+  },
+
+  getStreamUrl: (projectId: string): string => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    return `${API_URL}/api/v1/projects/${projectId}/demo/generate/stream?token=${token}`;
+  },
+
+  getRegenerateUrl: (projectId: string, pageId: string): string => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    return `${API_URL}/api/v1/projects/${projectId}/demo/pages/${pageId}/regenerate?token=${token}`;
+  },
+
+  getModifyUrl: (projectId: string): string => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    return `${API_URL}/api/v1/projects/${projectId}/demo/modify?token=${token}`;
+  },
+};
+
+// Helper to get the base API URL (for SSE connections)
+export const getApiBaseUrl = () => API_URL;
 
 export default api;

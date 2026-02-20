@@ -3,7 +3,7 @@ import json
 import base64
 import logging
 import os
-from typing import Any
+from typing import Any, AsyncGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +81,41 @@ class GeminiClient:
         )
 
         return response.text
+
+    async def generate_text_stream(
+        self,
+        prompt: str,
+        system_instruction: str | None = None,
+        temperature: float = 0.7,
+        max_output_tokens: int = 8192,
+    ) -> AsyncGenerator[str, None]:
+        """Generate text response with streaming.
+
+        Yields chunks of text as they are generated.
+        Note: No retry decorator as streaming doesn't support retry well.
+        """
+        generation_config = genai.GenerationConfig(
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+        )
+
+        if system_instruction:
+            model = genai.GenerativeModel(
+                self.model.model_name,
+                system_instruction=system_instruction,
+            )
+        else:
+            model = self.model
+
+        response = await model.generate_content_async(
+            prompt,
+            generation_config=generation_config,
+            stream=True,
+        )
+
+        async for chunk in response:
+            if chunk.text:
+                yield chunk.text
 
     @retry(
         stop=stop_after_attempt(3),

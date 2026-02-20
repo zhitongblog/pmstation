@@ -105,6 +105,50 @@ export interface Note {
   user_avatar: string | null;
 }
 
+// Demo types
+export interface DemoProject {
+  project_name: string;
+  platforms: DemoPlatform[];
+  shared_state: Record<string, any>;
+}
+
+export interface DemoPlatform {
+  type: 'pc' | 'mobile';
+  subtype: 'full' | 'admin' | 'user';
+  pages: DemoPage[];
+  navigation: NavigationConfig;
+}
+
+export interface DemoPage {
+  id: string;
+  name: string;
+  path: string;
+  description: string;
+  code: string;
+  order: number;
+  status: 'pending' | 'generating' | 'completed' | 'error';
+  transitions: PageTransition[];
+  error?: string;
+}
+
+export interface PageTransition {
+  trigger: string;
+  target_page_id: string;
+  state_changes?: Record<string, any>;
+}
+
+export interface NavigationConfig {
+  type: 'sidebar' | 'bottom' | 'top';
+  items: string[];
+}
+
+export interface DemoGenerationProgress {
+  totalPages: number;
+  completedPages: number;
+  currentPageId: string | null;
+  currentPageName: string | null;
+}
+
 // API response types
 export interface AuthResponse {
   access_token: string;
