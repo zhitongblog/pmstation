@@ -28,18 +28,24 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
 
     # CORS - can be comma-separated string or JSON array
-    cors_origins: str = "http://localhost:3000"
+    cors_origins: str = "http://localhost:3000,https://pmstationnew.vercel.app"
 
     def get_cors_origins(self) -> list[str]:
         """Parse CORS origins from string or JSON."""
         import json
         origins = self.cors_origins
+        # Always include production frontend
+        default_origins = ["http://localhost:3000", "https://pmstationnew.vercel.app"]
+
         if origins.startswith("["):
             try:
-                return json.loads(origins)
+                parsed = json.loads(origins)
+                return list(set(default_origins + parsed))
             except:
                 pass
-        return [o.strip() for o in origins.split(",") if o.strip()]
+
+        parsed = [o.strip() for o in origins.split(",") if o.strip()]
+        return list(set(default_origins + parsed))
 
     class Config:
         env_file = ".env"
