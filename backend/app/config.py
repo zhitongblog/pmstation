@@ -27,8 +27,19 @@ class Settings(BaseSettings):
     # Gemini API
     gemini_api_key: str = ""
 
-    # CORS
-    cors_origins: list[str] = ["http://localhost:3000"]
+    # CORS - can be comma-separated string or JSON array
+    cors_origins: str = "http://localhost:3000"
+
+    def get_cors_origins(self) -> list[str]:
+        """Parse CORS origins from string or JSON."""
+        import json
+        origins = self.cors_origins
+        if origins.startswith("["):
+            try:
+                return json.loads(origins)
+            except:
+                pass
+        return [o.strip() for o in origins.split(",") if o.strip()]
 
     class Config:
         env_file = ".env"
