@@ -51,11 +51,12 @@ app = FastAPI(
 )
 
 # CORS middleware
-cors_origins = settings.get_cors_origins()
-print(f"CORS origins configured: {cors_origins}")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
+    allow_origins=[
+        "http://localhost:3000",
+        "https://pmstationnew.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
