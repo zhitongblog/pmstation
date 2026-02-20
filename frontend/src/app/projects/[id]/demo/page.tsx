@@ -20,6 +20,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { demoApi } from '@/lib/api';
+import type { DemoProject } from '@/types';
 
 export default function DemoPage() {
   const params = useParams();
@@ -61,7 +62,7 @@ export default function DemoPage() {
       const demoStage = stages.find((s) => s.type === 'demo');
       if (demoStage?.output_data?.platforms) {
         // Load existing demo
-        setDemoProject(demoStage.output_data);
+        setDemoProject(demoStage.output_data as DemoProject);
         setIsInitialLoading(false);
       } else {
         // Try to fetch from API (in case stages weren't refreshed)
