@@ -24,12 +24,26 @@ interface LegacyDemoProject {
 
 // Convert legacy format to new format
 function convertLegacyToNewFormat(legacy: LegacyDemoProject): DemoProject {
-  // Convert files to pages
+  // Convert files to pages, using description as name when possible
   const pages: DemoPage[] = legacy.files.map((file, index) => {
     // Extract component name from filename
     const filename = file.filename;
     const match = filename.match(/([^/]+)\.(tsx?|jsx?)$/);
     const componentName = match ? match[1] : `Page${index + 1}`;
+
+    // Use description as display name if available, otherwise use component name
+    // Clean up the name to be more user-friendly
+    let displayName = file.description || componentName;
+    // If description is too long, truncate it
+    if (displayName.length > 30) {
+      displayName = displayName.substring(0, 30) + '...';
+    }
+    // Remove common suffixes like "组件", "页面" if already in the name
+    displayName = displayName.replace(/组件$/, '').replace(/页面$/, '');
+    // Add "页面" suffix if it's a page
+    if (filename.includes('pages/') && !displayName.includes('页')) {
+      displayName = displayName + '页';
+    }
 
     // Generate a path from filename
     let path = '/';
@@ -44,7 +58,7 @@ function convertLegacyToNewFormat(legacy: LegacyDemoProject): DemoProject {
 
     return {
       id: `page_${index}`,
-      name: componentName,
+      name: displayName,
       path,
       description: file.description,
       code: file.code,

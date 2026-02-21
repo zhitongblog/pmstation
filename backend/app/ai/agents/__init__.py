@@ -10,10 +10,11 @@ from app.ai.agents.prd_agent import PRDAgent
 from app.ai.agents.testcase_agent import TestCaseAgent
 
 # Agent registry (prototype removed - platform stage doesn't need AI generation)
+# Note: Using InteractiveDemoAgent for demo stage (supports streaming and better structure)
 AGENTS: dict[str, type[BaseAgent]] = {
     "direction": DirectionAgent,
     "features": FeatureAgent,
-    "demo": DemoAgent,
+    "demo": InteractiveDemoAgent,  # Changed from DemoAgent to InteractiveDemoAgent
     "prd": PRDAgent,
     "testcases": TestCaseAgent,
 }

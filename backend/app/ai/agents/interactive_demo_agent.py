@@ -29,8 +29,30 @@ class InteractiveDemoAgent(BaseAgent):
         project_id: UUID,
         db: AsyncSession,
     ) -> dict[str, Any]:
-        """Generate demo structure (legacy interface for compatibility)."""
-        return await self.generate_structure(project_id, db)
+        """
+        Generate complete demo with structure and code.
+        This is the synchronous interface for workflow compatibility.
+        """
+        # Phase 1: Generate structure
+        result = await self.generate_structure(project_id, db)
+
+        # Phase 2: Generate code for each page
+        context = await self._get_project_context(project_id, db)
+
+        for platform in result.get("platforms", []):
+            platform_type = platform.get("type", "pc")
+            for page in platform.get("pages", []):
+                # Generate code for this page
+                code_chunks = []
+                page_context = {**context, "platform_type": platform_type}
+
+                async for chunk in self.generate_page_stream(page, page_context):
+                    code_chunks.append(chunk)
+
+                page["code"] = "".join(code_chunks)
+                page["status"] = "completed"
+
+        return result
 
     async def generate_structure(
         self,
