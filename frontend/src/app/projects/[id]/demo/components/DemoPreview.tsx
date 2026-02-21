@@ -36,16 +36,38 @@ export function DemoPreview({ onNavigate }: DemoPreviewProps) {
   const pageId = currentPage?.id || '';
 
   // Get code: either from completed page or from generating buffer
-  const code = currentPage?.code || generatingPageCode[pageId] || '';
+  const rawCode = currentPage?.code || generatingPageCode[pageId] || '';
+
+  // Clean up code for browser execution
+  const cleanCodeForBrowser = (code: string): string => {
+    let cleaned = code;
+
+    // Remove import statements
+    cleaned = cleaned.replace(/^import\s+.*?;?\s*$/gm, '');
+    cleaned = cleaned.replace(/^import\s+[\s\S]*?from\s+['"].*?['"];?\s*$/gm, '');
+
+    // Convert "export default function ComponentName" to "function ComponentName"
+    cleaned = cleaned.replace(/export\s+default\s+function\s+/g, 'function ');
+
+    // Convert "export default ComponentName" to just remove it (component already defined)
+    cleaned = cleaned.replace(/export\s+default\s+(\w+);?\s*$/gm, '');
+
+    // Convert "export function" to just "function"
+    cleaned = cleaned.replace(/export\s+function\s+/g, 'function ');
+
+    // Convert "export const" to just "const"
+    cleaned = cleaned.replace(/export\s+const\s+/g, 'const ');
+
+    // Remove any remaining export statements
+    cleaned = cleaned.replace(/^export\s+.*?;?\s*$/gm, '');
+
+    return cleaned.trim();
+  };
+
+  const code = cleanCodeForBrowser(rawCode);
 
   // Generate iframe content
   const generateIframeContent = (componentCode: string) => {
-    // Escape the code for embedding
-    const escapedCode = componentCode
-      .replace(/</g, '\\u003c')
-      .replace(/>/g, '\\u003e')
-      .replace(/&/g, '\\u0026');
-
     return `
 <!DOCTYPE html>
 <html>
@@ -63,7 +85,7 @@ export function DemoPreview({ onNavigate }: DemoPreviewProps) {
 </head>
 <body>
   <div id="root"></div>
-  <script type="text/babel">
+  <script type="text/babel" data-presets="react">
     // Shared state from parent
     const sharedState = ${JSON.stringify(sharedState)};
 
@@ -77,6 +99,13 @@ export function DemoPreview({ onNavigate }: DemoPreviewProps) {
       window.parent.postMessage({ type: 'updateState', changes }, '*');
     }
 
+    // Mock hooks for demo
+    const useState = React.useState;
+    const useEffect = React.useEffect;
+    const useCallback = React.useCallback;
+    const useMemo = React.useMemo;
+    const useRef = React.useRef;
+
     // Component code
     ${componentCode}
 
@@ -84,16 +113,8 @@ export function DemoPreview({ onNavigate }: DemoPreviewProps) {
     try {
       const root = ReactDOM.createRoot(document.getElementById('root'));
 
-      // Find the default export or first component
-      const componentNames = Object.keys(window).filter(key =>
-        typeof window[key] === 'function' &&
-        /^[A-Z]/.test(key) &&
-        key !== 'React' &&
-        key !== 'ReactDOM'
-      );
-
-      // Try common component names
-      const possibleNames = ['App', 'Page', 'Component', ...componentNames];
+      // Find the first defined component function
+      const possibleNames = ['App', 'Page', 'Component', 'LoginPage', 'HomePage', 'DashboardPage', 'Dashboard', 'Login', 'Home', 'Main'];
       let Component = null;
 
       for (const name of possibleNames) {
@@ -103,14 +124,25 @@ export function DemoPreview({ onNavigate }: DemoPreviewProps) {
         }
       }
 
+      // If not found, try to find any function starting with uppercase
+      if (!Component) {
+        const allKeys = Object.keys(window);
+        for (const key of allKeys) {
+          if (/^[A-Z]/.test(key) && typeof window[key] === 'function' && key !== 'React' && key !== 'ReactDOM' && key !== 'Babel') {
+            Component = window[key];
+            break;
+          }
+        }
+      }
+
       if (Component) {
-        root.render(<Component sharedState={sharedState} navigateTo={navigateTo} updateState={updateState} />);
+        root.render(React.createElement(Component, { sharedState, navigateTo, updateState }));
       } else {
-        root.render(<div className="p-8 text-center text-gray-500">No component found to render</div>);
+        root.render(React.createElement('div', { className: 'p-8 text-center text-gray-500' }, 'No component found to render'));
       }
     } catch (error) {
       console.error('Render error:', error);
-      document.getElementById('root').innerHTML = '<div class="p-8 text-center text-red-500">Error: ' + error.message + '</div>';
+      document.getElementById('root').innerHTML = '<div class="p-8 text-center text-red-500">渲染错误: ' + error.message + '</div>';
     }
   </script>
 </body>
