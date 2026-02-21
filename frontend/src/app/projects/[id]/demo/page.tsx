@@ -1,17 +1,14 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { useDemoStore } from '@/stores/demoStore';
-import { useDemoGeneration, useDemoModify } from './hooks/useDemoGeneration';
 import {
   DemoSidebar,
   DemoPreview,
   DemoCodeView,
   DemoControls,
-  GenerationProgress,
-  ModifyDialog,
 } from './components';
 import {
   Play,
@@ -19,37 +16,28 @@ import {
   Loader2,
   RefreshCw,
 } from 'lucide-react';
-import { demoApi } from '@/lib/api';
-import type { DemoProject } from '@/types';
 
 export default function DemoPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
 
-  const { stages, confirmStage, fetchStages } = useWorkflowStore();
+  const { stages, generate, confirmStage, isGenerating, fetchStages } = useWorkflowStore();
   const {
     platforms,
     currentPageId,
-    isGenerating,
     viewMode,
     reset,
-    fetchDemoStructure,
     setDemoProject,
   } = useDemoStore();
 
-  const { startGeneration, isConnected } = useDemoGeneration(projectId);
-  const { modifyPage, isModifying } = useDemoModify(projectId);
-
-  const [isModifyDialogOpen, setIsModifyDialogOpen] = useState(false);
-  const [isRegenerating, setIsRegenerating] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   const stage = stages.find((s) => s.type === 'demo');
-  // Support both new format (platforms) and legacy format (files)
-  const hasExistingDemo = stage?.output_data?.platforms || stage?.output_data?.files;
   const featuresStage = stages.find((s) => s.type === 'features');
   const canGenerate = featuresStage?.status === 'confirmed';
+  // Support both new format (platforms) and legacy format (files)
+  const hasExistingDemo = stage?.output_data?.platforms || stage?.output_data?.files;
 
   // Initial load - fetch stages
   useEffect(() => {
@@ -69,13 +57,12 @@ export default function DemoPage() {
     if (isInitialLoading) return;
 
     const demoStage = stages.find((s) => s.type === 'demo');
-    // Support both new format (platforms) and legacy format (files)
-    if (demoStage?.output_data?.platforms || demoStage?.output_data?.files) {
-      setDemoProject(demoStage.output_data as DemoProject);
+    if (demoStage?.output_data && (demoStage.output_data.platforms || demoStage.output_data.files)) {
+      setDemoProject(demoStage.output_data as any);
     }
   }, [stages, isInitialLoading, setDemoProject]);
 
-  // Start generation when navigating to page without existing demo
+  // Auto-generate if no existing demo and can generate
   useEffect(() => {
     if (
       !isInitialLoading &&
@@ -84,9 +71,20 @@ export default function DemoPage() {
       !isGenerating &&
       platforms.length === 0
     ) {
-      startGeneration();
+      handleGenerate();
     }
-  }, [isInitialLoading, canGenerate, hasExistingDemo, isGenerating, platforms.length, startGeneration]);
+  }, [isInitialLoading, canGenerate, hasExistingDemo, isGenerating, platforms.length]);
+
+  const handleGenerate = async () => {
+    try {
+      const result = await generate(projectId, 'demo');
+      if (result?.output_data) {
+        setDemoProject(result.output_data as any);
+      }
+    } catch (error) {
+      console.error('Failed to generate demo:', error);
+    }
+  };
 
   const handleConfirm = async () => {
     try {
@@ -100,56 +98,7 @@ export default function DemoPage() {
 
   const handleRegenerate = async () => {
     reset();
-    startGeneration();
-  };
-
-  const handleRegeneratePage = useCallback(async () => {
-    if (!currentPageId) return;
-
-    setIsRegenerating(true);
-    try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002';
-      const token = localStorage.getItem('token');
-
-      const response = await fetch(
-        `${apiUrl}/api/v1/projects/${projectId}/demo/pages/${currentPageId}/regenerate`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: 'text/event-stream',
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) return;
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        // Process SSE events...
-      }
-    } catch (error) {
-      console.error('Regenerate error:', error);
-    } finally {
-      setIsRegenerating(false);
-    }
-  }, [projectId, currentPageId]);
-
-  const handleModify = async (instruction: string) => {
-    if (!currentPageId) return;
-    await modifyPage(currentPageId, instruction);
-    setIsModifyDialogOpen(false);
+    await handleGenerate();
   };
 
   // Loading state
@@ -178,6 +127,17 @@ export default function DemoPage() {
     );
   }
 
+  // Generating state
+  if (isGenerating) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4">
+        <Loader2 className="w-8 h-8 text-primary-600 animate-spin" />
+        <p className="text-gray-600">AI 正在生成交互 Demo...</p>
+        <p className="text-sm text-gray-400">这可能需要一些时间，请耐心等待</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-[calc(100vh-120px)]">
       {/* Header */}
@@ -190,9 +150,6 @@ export default function DemoPage() {
             <h1 className="text-xl font-bold text-gray-900">交互 Demo</h1>
             <p className="text-sm text-gray-500">
               AI 生成的可交互演示
-              {isConnected && (
-                <span className="ml-2 text-green-600">● 连接中</span>
-              )}
             </p>
           </div>
         </div>
@@ -205,7 +162,7 @@ export default function DemoPage() {
               className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg disabled:opacity-50"
             >
               <RefreshCw className={`w-4 h-4 ${isGenerating ? 'animate-spin' : ''}`} />
-              {isGenerating ? '生成中...' : '重新生成全部'}
+              重新生成
             </button>
           )}
 
@@ -230,13 +187,6 @@ export default function DemoPage() {
         </div>
       </div>
 
-      {/* Generation Progress */}
-      {isGenerating && (
-        <div className="px-6 py-4">
-          <GenerationProgress />
-        </div>
-      )}
-
       {/* Main content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar */}
@@ -246,9 +196,9 @@ export default function DemoPage() {
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Controls */}
           <DemoControls
-            onRegenerate={handleRegeneratePage}
-            onOpenModify={() => setIsModifyDialogOpen(true)}
-            isRegenerating={isRegenerating}
+            onRegenerate={handleRegenerate}
+            onOpenModify={() => {}}
+            isRegenerating={isGenerating}
           />
 
           {/* Preview/Code area */}
@@ -268,14 +218,6 @@ export default function DemoPage() {
           </div>
         </div>
       </div>
-
-      {/* Modify Dialog */}
-      <ModifyDialog
-        isOpen={isModifyDialogOpen}
-        onClose={() => setIsModifyDialogOpen(false)}
-        onModify={handleModify}
-        isModifying={isModifying}
-      />
     </div>
   );
 }
