@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { useDemoStore } from '@/stores/demoStore';
@@ -15,28 +15,50 @@ import {
   ArrowRight,
   Loader2,
   RefreshCw,
+  CheckCircle,
 } from 'lucide-react';
+import { getApiBaseUrl } from '@/lib/api';
+
+interface GenerationStatus {
+  isGenerating: boolean;
+  currentPage: string | null;
+  completedPages: number;
+  totalPages: number;
+  error: string | null;
+}
 
 export default function DemoPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  const { stages, generate, confirmStage, isGenerating, fetchStages } = useWorkflowStore();
+  const { stages, confirmStage, fetchStages } = useWorkflowStore();
   const {
     platforms,
-    currentPageId,
     viewMode,
     reset,
     setDemoProject,
+    setPlatforms,
+    setCurrentPlatform,
+    setCurrentPageId,
+    appendPageCode,
+    completePageGeneration,
+    setPageStatus,
   } = useDemoStore();
 
   const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [status, setStatus] = useState<GenerationStatus>({
+    isGenerating: false,
+    currentPage: null,
+    completedPages: 0,
+    totalPages: 0,
+    error: null,
+  });
 
   const stage = stages.find((s) => s.type === 'demo');
   const featuresStage = stages.find((s) => s.type === 'features');
   const canGenerate = featuresStage?.status === 'confirmed';
-  // Support both new format (platforms) and legacy format (files)
   const hasExistingDemo = stage?.output_data?.platforms || stage?.output_data?.files;
 
   // Initial load - fetch stages
@@ -46,9 +68,11 @@ export default function DemoPage() {
       setIsInitialLoading(false);
     });
 
-    // Cleanup on unmount
     return () => {
       reset();
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
     };
   }, [projectId, fetchStages, reset]);
 
@@ -62,29 +86,170 @@ export default function DemoPage() {
     }
   }, [stages, isInitialLoading, setDemoProject]);
 
-  // Auto-generate if no existing demo and can generate
+  // SSE streaming generation
+  const startGeneration = useCallback(async () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+
+    reset();
+    setStatus({
+      isGenerating: true,
+      currentPage: null,
+      completedPages: 0,
+      totalPages: 0,
+      error: null,
+    });
+
+    const token = localStorage.getItem('token');
+    const apiUrl = getApiBaseUrl();
+    const url = `${apiUrl}/api/v1/projects/${projectId}/demo/generate/stream`;
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'text/event-stream',
+        },
+        signal: abortControllerRef.current.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('No reader available');
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop() || '';
+
+        for (const chunk of lines) {
+          if (!chunk.trim()) continue;
+
+          const eventMatch = chunk.match(/^event:\s*(.+)$/m);
+          const dataMatch = chunk.match(/^data:\s*(.+)$/m);
+
+          if (eventMatch && dataMatch) {
+            const eventType = eventMatch[1];
+            try {
+              const data = JSON.parse(dataMatch[1]);
+
+              switch (eventType) {
+                case 'init':
+                  setStatus(s => ({
+                    ...s,
+                    totalPages: data.total_pages,
+                  }));
+                  // Set platforms with pending status
+                  if (data.platforms) {
+                    const platformsWithStatus = data.platforms.map((p: any) => ({
+                      ...p,
+                      pages: p.pages?.map((page: any) => ({
+                        ...page,
+                        status: 'pending',
+                        code: '',
+                      })) || [],
+                    }));
+                    setPlatforms(platformsWithStatus);
+                    // Auto-select first platform
+                    if (platformsWithStatus.length > 0) {
+                      setCurrentPlatform(platformsWithStatus[0].type);
+                      if (platformsWithStatus[0].pages?.length > 0) {
+                        setCurrentPageId(platformsWithStatus[0].pages[0].id);
+                      }
+                    }
+                  }
+                  break;
+
+                case 'page_start':
+                  setStatus(s => ({
+                    ...s,
+                    currentPage: data.page_name,
+                  }));
+                  setPageStatus(data.page_id, 'generating');
+                  break;
+
+                case 'page_progress':
+                  appendPageCode(data.page_id, data.chunk);
+                  break;
+
+                case 'page_complete':
+                  completePageGeneration(data.page_id, data.code);
+                  setStatus(s => ({
+                    ...s,
+                    completedPages: s.completedPages + 1,
+                    currentPage: null,
+                  }));
+                  break;
+
+                case 'page_error':
+                  setPageStatus(data.page_id, 'error');
+                  break;
+
+                case 'complete':
+                  setStatus(s => ({
+                    ...s,
+                    isGenerating: false,
+                  }));
+                  // Refresh stages to get updated data
+                  fetchStages(projectId);
+                  break;
+
+                case 'error':
+                  setStatus(s => ({
+                    ...s,
+                    isGenerating: false,
+                    error: data.message,
+                  }));
+                  break;
+              }
+            } catch (e) {
+              console.error('Failed to parse SSE data:', e);
+            }
+          }
+        }
+      }
+
+      setStatus(s => ({ ...s, isGenerating: false }));
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.log('Generation aborted');
+        return;
+      }
+      console.error('SSE Error:', error);
+      setStatus(s => ({
+        ...s,
+        isGenerating: false,
+        error: error.message,
+      }));
+    }
+  }, [projectId, reset, setPlatforms, setCurrentPlatform, setCurrentPageId, setPageStatus, appendPageCode, completePageGeneration, fetchStages]);
+
+  // Auto-generate if no existing demo
   useEffect(() => {
     if (
       !isInitialLoading &&
       canGenerate &&
       !hasExistingDemo &&
-      !isGenerating &&
+      !status.isGenerating &&
       platforms.length === 0
     ) {
-      handleGenerate();
+      startGeneration();
     }
-  }, [isInitialLoading, canGenerate, hasExistingDemo, isGenerating, platforms.length]);
-
-  const handleGenerate = async () => {
-    try {
-      const result = await generate(projectId, 'demo');
-      if (result?.output_data) {
-        setDemoProject(result.output_data as any);
-      }
-    } catch (error) {
-      console.error('Failed to generate demo:', error);
-    }
-  };
+  }, [isInitialLoading, canGenerate, hasExistingDemo, status.isGenerating, platforms.length, startGeneration]);
 
   const handleConfirm = async () => {
     try {
@@ -97,8 +262,7 @@ export default function DemoPage() {
   };
 
   const handleRegenerate = async () => {
-    reset();
-    await handleGenerate();
+    await startGeneration();
   };
 
   // Loading state
@@ -111,7 +275,7 @@ export default function DemoPage() {
     );
   }
 
-  // Not ready state (features not confirmed)
+  // Not ready state
   if (!canGenerate) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-4">
@@ -123,17 +287,6 @@ export default function DemoPage() {
         >
           返回功能模块
         </button>
-      </div>
-    );
-  }
-
-  // Generating state
-  if (isGenerating) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 gap-4">
-        <Loader2 className="w-8 h-8 text-primary-600 animate-spin" />
-        <p className="text-gray-600">AI 正在生成交互 Demo...</p>
-        <p className="text-sm text-gray-400">这可能需要一些时间，请耐心等待</p>
       </div>
     );
   }
@@ -158,10 +311,10 @@ export default function DemoPage() {
           {stage?.status !== 'confirmed' && (
             <button
               onClick={handleRegenerate}
-              disabled={isGenerating}
+              disabled={status.isGenerating}
               className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg disabled:opacity-50"
             >
-              <RefreshCw className={`w-4 h-4 ${isGenerating ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${status.isGenerating ? 'animate-spin' : ''}`} />
               重新生成
             </button>
           )}
@@ -177,7 +330,7 @@ export default function DemoPage() {
           ) : (
             <button
               onClick={handleConfirm}
-              disabled={isGenerating || platforms.length === 0}
+              disabled={status.isGenerating || platforms.length === 0}
               className="flex items-center gap-2 bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 disabled:opacity-50"
             >
               确认 Demo
@@ -186,6 +339,42 @@ export default function DemoPage() {
           )}
         </div>
       </div>
+
+      {/* Generation Progress */}
+      {status.isGenerating && (
+        <div className="px-6 py-4 bg-blue-50 border-b border-blue-100">
+          <div className="flex items-center gap-4">
+            <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+            <div className="flex-1">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm font-medium text-blue-900">
+                  {status.currentPage ? `正在生成: ${status.currentPage}` : '准备生成...'}
+                </span>
+                <span className="text-sm text-blue-600">
+                  {status.completedPages} / {status.totalPages} 页面
+                </span>
+              </div>
+              <div className="w-full bg-blue-200 rounded-full h-2">
+                <div
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                  style={{
+                    width: status.totalPages > 0
+                      ? `${(status.completedPages / status.totalPages) * 100}%`
+                      : '0%'
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error message */}
+      {status.error && (
+        <div className="px-6 py-3 bg-red-50 border-b border-red-100">
+          <p className="text-sm text-red-600">生成错误: {status.error}</p>
+        </div>
+      )}
 
       {/* Main content */}
       <div className="flex-1 flex overflow-hidden">
@@ -198,7 +387,7 @@ export default function DemoPage() {
           <DemoControls
             onRegenerate={handleRegenerate}
             onOpenModify={() => {}}
-            isRegenerating={isGenerating}
+            isRegenerating={status.isGenerating}
           />
 
           {/* Preview/Code area */}
