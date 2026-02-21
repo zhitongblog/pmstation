@@ -79,30 +79,26 @@ function convertNewFormatToStoreFormat(data: NewFormatProject): DemoProject {
 
 // Convert legacy format (files array) to new format
 function convertLegacyToNewFormat(legacy: LegacyDemoProject): DemoProject {
-  // Convert files to pages, using description as name when possible
+  // Convert files to pages
   const pages: DemoPage[] = legacy.files.map((file, index) => {
-    // Extract component name from filename
+    // Extract name from filename (now uses Chinese names like "登录页.tsx")
     const filename = file.filename;
+    // Remove file extension and path
     const match = filename.match(/([^/]+)\.(tsx?|jsx?)$/);
-    const componentName = match ? match[1] : `Page${index + 1}`;
+    let displayName = match ? match[1] : `页面${index + 1}`;
 
-    // Use description as display name if available, otherwise use component name
-    let displayName = file.description || componentName;
-    // If description is too long, truncate it
+    // If filename is in English format, use description instead
+    if (/^[a-zA-Z]/.test(displayName)) {
+      displayName = file.description || displayName;
+    }
+
+    // Truncate if too long
     if (displayName.length > 30) {
       displayName = displayName.substring(0, 30) + '...';
     }
 
-    // Generate a path from filename
-    let path = '/';
-    if (filename.includes('pages/') || filename.includes('components/')) {
-      const pathMatch = filename.match(/(?:pages|components)\/([^.]+)/);
-      if (pathMatch) {
-        path = '/' + pathMatch[1].toLowerCase();
-      }
-    } else if (componentName.toLowerCase() !== 'app') {
-      path = '/' + componentName.toLowerCase();
-    }
+    // Generate a path from name
+    const path = '/' + displayName.replace(/页$/, '').toLowerCase();
 
     return {
       id: `page_${index}`,
