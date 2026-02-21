@@ -46,6 +46,45 @@ export function DemoPreview({ onNavigate }: DemoPreviewProps) {
     cleaned = cleaned.replace(/^import\s+.*?;?\s*$/gm, '');
     cleaned = cleaned.replace(/^import\s+[\s\S]*?from\s+['"].*?['"];?\s*$/gm, '');
 
+    // Find component names before removing exports
+    const componentNames: string[] = [];
+
+    // Find "export default function ComponentName"
+    const defaultFuncMatch = cleaned.match(/export\s+default\s+function\s+([A-Z]\w*)/);
+    if (defaultFuncMatch) {
+      componentNames.push(defaultFuncMatch[1]);
+    }
+
+    // Find "export function ComponentName"
+    const exportFuncMatches = Array.from(cleaned.matchAll(/export\s+function\s+([A-Z]\w*)/g));
+    for (const match of exportFuncMatches) {
+      componentNames.push(match[1]);
+    }
+
+    // Find "export const ComponentName"
+    const exportConstMatches = Array.from(cleaned.matchAll(/export\s+const\s+([A-Z]\w*)\s*=/g));
+    for (const match of exportConstMatches) {
+      componentNames.push(match[1]);
+    }
+
+    // Find "export default ComponentName" (reference to existing component)
+    const defaultRefMatch = cleaned.match(/export\s+default\s+([A-Z]\w*)\s*;?\s*$/m);
+    if (defaultRefMatch) {
+      componentNames.push(defaultRefMatch[1]);
+    }
+
+    // Find standalone function declarations "function ComponentName"
+    const funcMatches = Array.from(cleaned.matchAll(/^function\s+([A-Z]\w*)\s*\(/gm));
+    for (const match of funcMatches) {
+      componentNames.push(match[1]);
+    }
+
+    // Find const arrow function components "const ComponentName = "
+    const constMatches = Array.from(cleaned.matchAll(/^const\s+([A-Z]\w*)\s*=/gm));
+    for (const match of constMatches) {
+      componentNames.push(match[1]);
+    }
+
     // Convert "export default function ComponentName" to "function ComponentName"
     cleaned = cleaned.replace(/export\s+default\s+function\s+/g, 'function ');
 
@@ -60,6 +99,16 @@ export function DemoPreview({ onNavigate }: DemoPreviewProps) {
 
     // Remove any remaining export statements
     cleaned = cleaned.replace(/^export\s+.*?;?\s*$/gm, '');
+
+    // Add window assignments for all found components
+    // This makes them accessible globally for the renderer to find
+    const uniqueNames = Array.from(new Set(componentNames));
+    if (uniqueNames.length > 0) {
+      const assignments = uniqueNames
+        .map(name => `if (typeof ${name} !== 'undefined') window.${name} = ${name};`)
+        .join('\n');
+      cleaned = cleaned.trim() + '\n\n// Make components globally accessible\n' + assignments;
+    }
 
     return cleaned.trim();
   };
