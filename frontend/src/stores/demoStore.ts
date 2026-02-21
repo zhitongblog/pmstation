@@ -7,6 +7,80 @@ import type {
 } from '@/types';
 import { demoApi } from '@/lib/api';
 
+// Legacy demo format (from old DemoAgent)
+interface LegacyDemoFile {
+  filename: string;
+  code: string;
+  description: string;
+}
+
+interface LegacyDemoProject {
+  project_name: string;
+  description?: string;
+  files: LegacyDemoFile[];
+  dependencies?: Record<string, string>;
+  setup_instructions?: string[];
+}
+
+// Convert legacy format to new format
+function convertLegacyToNewFormat(legacy: LegacyDemoProject): DemoProject {
+  // Convert files to pages
+  const pages: DemoPage[] = legacy.files.map((file, index) => {
+    // Extract component name from filename
+    const filename = file.filename;
+    const match = filename.match(/([^/]+)\.(tsx?|jsx?)$/);
+    const componentName = match ? match[1] : `Page${index + 1}`;
+
+    // Generate a path from filename
+    let path = '/';
+    if (filename.includes('pages/') || filename.includes('components/')) {
+      const pathMatch = filename.match(/(?:pages|components)\/([^.]+)/);
+      if (pathMatch) {
+        path = '/' + pathMatch[1].toLowerCase();
+      }
+    } else if (componentName.toLowerCase() !== 'app') {
+      path = '/' + componentName.toLowerCase();
+    }
+
+    return {
+      id: `page_${index}`,
+      name: componentName,
+      path,
+      description: file.description,
+      code: file.code,
+      order: index,
+      status: 'completed' as const,
+      transitions: [],
+    };
+  });
+
+  // Create a single PC platform with all pages
+  const platform: DemoPlatform = {
+    type: 'pc',
+    subtype: 'full',
+    pages,
+    navigation: {
+      type: 'sidebar',
+      items: pages.map(p => p.id),
+    },
+  };
+
+  return {
+    project_name: legacy.project_name,
+    platforms: [platform],
+    shared_state: {},
+    generation_metadata: {
+      total_pages: pages.length,
+      generated_at: new Date().toISOString(),
+    },
+  };
+}
+
+// Check if data is in legacy format
+function isLegacyFormat(data: any): data is LegacyDemoProject {
+  return data && Array.isArray(data.files) && !data.platforms;
+}
+
 interface DemoState {
   // Data
   demoProject: DemoProject | null;
@@ -79,18 +153,28 @@ export const useDemoStore = create<DemoState>((set, get) => ({
   ...initialState,
 
   setDemoProject: (project) => {
+    // Handle both legacy and new formats
+    let normalizedProject: DemoProject;
+
+    if (isLegacyFormat(project)) {
+      // Convert legacy format to new format
+      normalizedProject = convertLegacyToNewFormat(project as any);
+    } else {
+      normalizedProject = project;
+    }
+
     set({
-      demoProject: project,
-      platforms: project.platforms,
-      sharedState: project.shared_state || {},
+      demoProject: normalizedProject,
+      platforms: normalizedProject.platforms || [],
+      sharedState: normalizedProject.shared_state || {},
     });
 
     // Auto-select first platform and page
-    if (project.platforms.length > 0) {
-      const firstPlatform = project.platforms[0];
+    if (normalizedProject.platforms && normalizedProject.platforms.length > 0) {
+      const firstPlatform = normalizedProject.platforms[0];
       set({ currentPlatform: firstPlatform.type });
 
-      if (firstPlatform.pages.length > 0) {
+      if (firstPlatform.pages && firstPlatform.pages.length > 0) {
         const sortedPages = [...firstPlatform.pages].sort((a, b) => a.order - b.order);
         set({ currentPageId: sortedPages[0].id });
       }

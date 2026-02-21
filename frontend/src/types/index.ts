@@ -110,6 +110,10 @@ export interface DemoProject {
   project_name: string;
   platforms: DemoPlatform[];
   shared_state: Record<string, any>;
+  generation_metadata?: {
+    total_pages: number;
+    generated_at: string;
+  };
 }
 
 export interface DemoPlatform {

@@ -46,7 +46,8 @@ export default function DemoPage() {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   const stage = stages.find((s) => s.type === 'demo');
-  const hasExistingDemo = stage?.output_data?.platforms;
+  // Support both new format (platforms) and legacy format (files)
+  const hasExistingDemo = stage?.output_data?.platforms || stage?.output_data?.files;
   const featuresStage = stages.find((s) => s.type === 'features');
   const canGenerate = featuresStage?.status === 'confirmed';
 
@@ -68,7 +69,8 @@ export default function DemoPage() {
     if (isInitialLoading) return;
 
     const demoStage = stages.find((s) => s.type === 'demo');
-    if (demoStage?.output_data?.platforms) {
+    // Support both new format (platforms) and legacy format (files)
+    if (demoStage?.output_data?.platforms || demoStage?.output_data?.files) {
       setDemoProject(demoStage.output_data as DemoProject);
     }
   }, [stages, isInitialLoading, setDemoProject]);
