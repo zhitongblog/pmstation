@@ -44,12 +44,20 @@ class DemoAgent(BaseAgent):
         if selected_ids:
             modules = self._filter_selected_modules(modules, selected_ids)
 
-        # Get platform info for responsive design hints
-        platform_info = ""
+        # Get platform info - determines which platforms to generate demos for
+        platform_info = "目标平台: pc"  # Default to PC only
+        platforms_list = []
         if platform_data:
-            platforms = platform_data.get("output_data", {}).get("platforms", [])
-            if platforms:
-                platform_info = f"目标平台: {', '.join(platforms)}"
+            output = platform_data.get("output_data", {})
+            platforms_list = output.get("platforms", [])
+            if platforms_list:
+                platform_names = []
+                for p in platforms_list:
+                    if p == "pc":
+                        platform_names.append("PC端（桌面网页）")
+                    elif p == "mobile":
+                        platform_names.append("移动端（手机APP/H5）")
+                platform_info = f"目标平台: {', '.join(platform_names)}\n请为以上每个平台分别生成对应的页面。"
 
         # Call Gemini API
         client = get_gemini_client("pro")

@@ -7,7 +7,7 @@ import type {
 } from '@/types';
 import { demoApi } from '@/lib/api';
 
-// Legacy demo format (from old DemoAgent)
+// Legacy demo format (from old DemoAgent with files array)
 interface LegacyDemoFile {
   filename: string;
   code: string;
@@ -22,7 +22,62 @@ interface LegacyDemoProject {
   setup_instructions?: string[];
 }
 
-// Convert legacy format to new format
+// New format page (from updated DemoAgent)
+interface NewFormatPage {
+  id: string;
+  name: string;
+  description: string;
+  code: string;
+}
+
+interface NewFormatPlatform {
+  type: 'pc' | 'mobile';
+  pages: NewFormatPage[];
+}
+
+interface NewFormatProject {
+  project_name: string;
+  platforms: NewFormatPlatform[];
+  shared_state?: Record<string, any>;
+}
+
+// Convert new format (from updated DemoAgent) to store format
+function convertNewFormatToStoreFormat(data: NewFormatProject): DemoProject {
+  const platforms: DemoPlatform[] = data.platforms.map((platform) => {
+    const pages: DemoPage[] = platform.pages.map((page, index) => ({
+      id: page.id || `page_${index}`,
+      name: page.name,
+      path: `/${page.name.toLowerCase().replace(/\s+/g, '-')}`,
+      description: page.description,
+      code: page.code,
+      order: index,
+      status: 'completed' as const,
+      transitions: [],
+    }));
+
+    return {
+      type: platform.type,
+      subtype: 'full' as const,
+      pages,
+      navigation: {
+        type: platform.type === 'mobile' ? 'bottom' as const : 'sidebar' as const,
+        items: pages.map(p => p.id),
+      },
+    };
+  });
+
+  return {
+    project_name: data.project_name,
+    platforms,
+    shared_state: data.shared_state || {},
+    generation_metadata: {
+      total_pages: platforms.reduce((sum, p) => sum + p.pages.length, 0),
+      generated_at: new Date().toISOString(),
+    },
+  };
+}
+
+// Convert legacy format (files array) to new format
 function convertLegacyToNewFormat(legacy: LegacyDemoProject): DemoProject {
   // Convert files to pages, using description as name when possible
   const pages: DemoPage[] = legacy.files.map((file, index) => {
@@ -32,17 +87,10 @@ function convertLegacyToNewFormat(legacy: LegacyDemoProject): DemoProject {
     const componentName = match ? match[1] : `Page${index + 1}`;
 
     // Use description as display name if available, otherwise use component name
-    // Clean up the name to be more user-friendly
     let displayName = file.description || componentName;
     // If description is too long, truncate it
     if (displayName.length > 30) {
       displayName = displayName.substring(0, 30) + '...';
-    }
-    // Remove common suffixes like "组件", "页面" if already in the name
-    displayName = displayName.replace(/组件$/, '').replace(/页面$/, '');
-    // Add "页面" suffix if it's a page
-    if (filename.includes('pages/') && !displayName.includes('页')) {
-      displayName = displayName + '页';
     }
 
     // Generate a path from filename
@@ -90,9 +138,15 @@ function convertLegacyToNewFormat(legacy: LegacyDemoProject): DemoProject {
   };
 }
 
-// Check if data is in legacy format
+// Check if data is in legacy format (files array)
 function isLegacyFormat(data: any): data is LegacyDemoProject {
   return data && Array.isArray(data.files) && !data.platforms;
+}
+
+// Check if data is in new format (platforms array but needs conversion)
+function isNewFormat(data: any): data is NewFormatProject {
+  return data && Array.isArray(data.platforms) && data.platforms.length > 0 &&
+    data.platforms[0].pages && !data.platforms[0].navigation;
 }
 
 interface DemoState {
@@ -167,13 +221,17 @@ export const useDemoStore = create<DemoState>((set, get) => ({
   ...initialState,
 
   setDemoProject: (project) => {
-    // Handle both legacy and new formats
+    // Handle all formats: legacy (files), new (platforms without navigation), and store format
     let normalizedProject: DemoProject;
 
     if (isLegacyFormat(project)) {
-      // Convert legacy format to new format
+      // Convert legacy format (files array) to store format
       normalizedProject = convertLegacyToNewFormat(project as any);
+    } else if (isNewFormat(project)) {
+      // Convert new format (platforms without navigation) to store format
+      normalizedProject = convertNewFormatToStoreFormat(project as any);
     } else {
+      // Already in store format
       normalizedProject = project;
     }
 
