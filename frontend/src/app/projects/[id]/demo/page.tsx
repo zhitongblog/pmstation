@@ -50,38 +50,28 @@ export default function DemoPage() {
   const featuresStage = stages.find((s) => s.type === 'features');
   const canGenerate = featuresStage?.status === 'confirmed';
 
-  // Initial load
+  // Initial load - fetch stages
   useEffect(() => {
-    const loadDemo = async () => {
-      setIsInitialLoading(true);
-
-      // Fetch stages first
-      await fetchStages(projectId);
-
-      // Check if demo already exists
-      const demoStage = stages.find((s) => s.type === 'demo');
-      if (demoStage?.output_data?.platforms) {
-        // Load existing demo
-        setDemoProject(demoStage.output_data as DemoProject);
-        setIsInitialLoading(false);
-      } else {
-        // Try to fetch from API (in case stages weren't refreshed)
-        try {
-          await fetchDemoStructure(projectId);
-        } catch {
-          // Demo doesn't exist yet, that's fine
-        }
-        setIsInitialLoading(false);
-      }
-    };
-
-    loadDemo();
+    setIsInitialLoading(true);
+    fetchStages(projectId).finally(() => {
+      setIsInitialLoading(false);
+    });
 
     // Cleanup on unmount
     return () => {
       reset();
     };
-  }, [projectId]);
+  }, [projectId, fetchStages, reset]);
+
+  // Load existing demo when stages are loaded
+  useEffect(() => {
+    if (isInitialLoading) return;
+
+    const demoStage = stages.find((s) => s.type === 'demo');
+    if (demoStage?.output_data?.platforms) {
+      setDemoProject(demoStage.output_data as DemoProject);
+    }
+  }, [stages, isInitialLoading, setDemoProject]);
 
   // Start generation when navigating to page without existing demo
   useEffect(() => {

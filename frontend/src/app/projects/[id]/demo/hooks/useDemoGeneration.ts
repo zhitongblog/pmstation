@@ -2,48 +2,35 @@ import { useCallback, useRef, useState } from 'react';
 import { useDemoStore } from '@/stores/demoStore';
 import { getApiBaseUrl } from '@/lib/api';
 
-interface SSEEvent {
-  event: string;
-  data: any;
-}
-
 export function useDemoGeneration(projectId: string) {
   const [isConnected, setIsConnected] = useState(false);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  const {
-    setDemoProject,
-    setPlatforms,
-    setIsGenerating,
-    setGenerationProgress,
-    appendPageCode,
-    completePageGeneration,
-    setPageStatus,
-    setPageError,
-    setError,
-  } = useDemoStore();
+  const store = useDemoStore();
 
   const startGeneration = useCallback(async () => {
-    // Close existing connection if any
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
+    // Abort existing request if any
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
     }
 
-    setIsGenerating(true);
-    setError(null);
+    abortControllerRef.current = new AbortController();
+
+    store.setIsGenerating(true);
+    store.setError(null);
 
     const token = localStorage.getItem('token');
     const apiUrl = getApiBaseUrl();
     const url = `${apiUrl}/api/v1/projects/${projectId}/demo/generate/stream`;
 
     try {
-      // Use fetch with ReadableStream for better SSE handling with auth
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'text/event-stream',
         },
+        signal: abortControllerRef.current.signal,
       });
 
       if (!response.ok) {
@@ -74,10 +61,52 @@ export function useDemoGeneration(projectId: string) {
           const dataMatch = chunk.match(/^data:\s*(.+)$/m);
 
           if (eventMatch && dataMatch) {
-            const event = eventMatch[1];
+            const eventType = eventMatch[1];
             try {
               const data = JSON.parse(dataMatch[1]);
-              handleSSEEvent({ event, data });
+
+              // Handle SSE events inline to avoid closure issues
+              switch (eventType) {
+                case 'init':
+                  store.setGenerationProgress({
+                    totalPages: data.total_pages,
+                    completedPages: 0,
+                    currentPageId: null,
+                    currentPageName: null,
+                  });
+                  store.setPlatforms(data.platforms);
+                  break;
+
+                case 'page_start':
+                  store.setPageStatus(data.page_id, 'generating');
+                  store.setGenerationProgress({
+                    currentPageId: data.page_id,
+                    currentPageName: data.page_name,
+                  });
+                  break;
+
+                case 'page_progress':
+                  store.appendPageCode(data.page_id, data.chunk);
+                  break;
+
+                case 'page_complete':
+                  store.completePageGeneration(data.page_id, data.code);
+                  break;
+
+                case 'page_error':
+                  store.setPageError(data.page_id, data.error);
+                  break;
+
+                case 'complete':
+                  store.setDemoProject(data.demo_project);
+                  store.setIsGenerating(false);
+                  break;
+
+                case 'error':
+                  store.setError(data.message);
+                  store.setIsGenerating(false);
+                  break;
+              }
             } catch (e) {
               console.error('Failed to parse SSE data:', e);
             }
@@ -86,86 +115,27 @@ export function useDemoGeneration(projectId: string) {
       }
 
       setIsConnected(false);
-      setIsGenerating(false);
+      store.setIsGenerating(false);
     } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.log('Generation aborted');
+        return;
+      }
       console.error('SSE Error:', error);
-      setError(error.message);
+      store.setError(error.message);
       setIsConnected(false);
-      setIsGenerating(false);
+      store.setIsGenerating(false);
     }
-  }, [projectId, setIsGenerating, setError]);
-
-  const handleSSEEvent = useCallback((event: SSEEvent) => {
-    console.log('[SSE Event]', event.event, event.data);
-
-    switch (event.event) {
-      case 'init':
-        // Structure generation complete
-        setGenerationProgress({
-          totalPages: event.data.total_pages,
-          completedPages: 0,
-          currentPageId: null,
-          currentPageName: null,
-        });
-        setPlatforms(event.data.platforms);
-        break;
-
-      case 'page_start':
-        // Starting to generate a page
-        setPageStatus(event.data.page_id, 'generating');
-        setGenerationProgress({
-          currentPageId: event.data.page_id,
-          currentPageName: event.data.page_name,
-        });
-        break;
-
-      case 'page_progress':
-        // Receiving code chunks
-        appendPageCode(event.data.page_id, event.data.chunk);
-        break;
-
-      case 'page_complete':
-        // Page generation complete
-        completePageGeneration(event.data.page_id, event.data.code);
-        break;
-
-      case 'page_error':
-        // Page generation error
-        setPageError(event.data.page_id, event.data.error);
-        break;
-
-      case 'complete':
-        // All generation complete
-        setDemoProject(event.data.demo_project);
-        setIsGenerating(false);
-        break;
-
-      case 'error':
-        // General error
-        setError(event.data.message);
-        setIsGenerating(false);
-        break;
-    }
-  }, [
-    setGenerationProgress,
-    setPlatforms,
-    setPageStatus,
-    appendPageCode,
-    completePageGeneration,
-    setPageError,
-    setDemoProject,
-    setIsGenerating,
-    setError,
-  ]);
+  }, [projectId, store]);
 
   const stopGeneration = useCallback(() => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
     }
     setIsConnected(false);
-    setIsGenerating(false);
-  }, [setIsGenerating]);
+    store.setIsGenerating(false);
+  }, [store]);
 
   return {
     startGeneration,
@@ -178,11 +148,7 @@ export function useDemoModify(projectId: string) {
   const [isModifying, setIsModifying] = useState(false);
   const [modifyingPageId, setModifyingPageId] = useState<string | null>(null);
 
-  const {
-    appendPageCode,
-    completePageGeneration,
-    setError,
-  } = useDemoStore();
+  const store = useDemoStore();
 
   const modifyPage = useCallback(async (pageId: string, instruction: string) => {
     setIsModifying(true);
@@ -217,7 +183,6 @@ export function useDemoModify(projectId: string) {
 
       const decoder = new TextDecoder();
       let buffer = '';
-      let newCode = '';
 
       while (true) {
         const { done, value } = await reader.read();
@@ -234,20 +199,19 @@ export function useDemoModify(projectId: string) {
           const dataMatch = chunk.match(/^data:\s*(.+)$/m);
 
           if (eventMatch && dataMatch) {
-            const event = eventMatch[1];
+            const eventType = eventMatch[1];
             try {
               const data = JSON.parse(dataMatch[1]);
 
-              switch (event) {
+              switch (eventType) {
                 case 'modify_progress':
-                  newCode += data.chunk;
-                  appendPageCode(pageId, data.chunk);
+                  store.appendPageCode(pageId, data.chunk);
                   break;
                 case 'modify_complete':
-                  completePageGeneration(pageId, data.code);
+                  store.completePageGeneration(pageId, data.code);
                   break;
                 case 'error':
-                  setError(data.message);
+                  store.setError(data.message);
                   break;
               }
             } catch (e) {
@@ -261,11 +225,11 @@ export function useDemoModify(projectId: string) {
       setModifyingPageId(null);
     } catch (error: any) {
       console.error('Modify Error:', error);
-      setError(error.message);
+      store.setError(error.message);
       setIsModifying(false);
       setModifyingPageId(null);
     }
-  }, [projectId, appendPageCode, completePageGeneration, setError]);
+  }, [projectId, store]);
 
   return {
     modifyPage,
