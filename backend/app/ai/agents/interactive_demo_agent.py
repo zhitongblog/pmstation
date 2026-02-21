@@ -74,12 +74,40 @@ class InteractiveDemoAgent(BaseAgent):
             platform_info=context["platform_info"],
         )
 
-        result = await client.generate_json(
-            prompt=prompt,
-            system_instruction=DEMO_STRUCTURE_SYSTEM_PROMPT,
-            temperature=0.7,
-            max_output_tokens=4096,
-        )
+        # Try generate_json first, fall back to text generation
+        try:
+            result = await client.generate_json(
+                prompt=prompt,
+                system_instruction=DEMO_STRUCTURE_SYSTEM_PROMPT,
+                temperature=0.7,
+                max_output_tokens=4096,
+            )
+        except Exception as e:
+            # Fallback: generate text and parse manually
+            import logging
+            logging.getLogger(__name__).warning(f"generate_json failed: {e}, falling back to text")
+
+            text = await client.generate_text(
+                prompt=prompt,
+                system_instruction=DEMO_STRUCTURE_SYSTEM_PROMPT,
+                temperature=0.7,
+                max_output_tokens=4096,
+            )
+
+            # Extract JSON from text
+            text = text.strip()
+            if text.startswith("```"):
+                # Remove markdown code fences
+                lines = text.split("\n")
+                text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+
+            # Find JSON object
+            start = text.find("{")
+            end = text.rfind("}") + 1
+            if start >= 0 and end > start:
+                result = json.loads(text[start:end])
+            else:
+                raise ValueError(f"No JSON found in response: {text[:200]}")
 
         # Add pending status to all pages
         for platform in result.get("platforms", []):

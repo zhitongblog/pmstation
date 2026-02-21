@@ -4,75 +4,27 @@
 # Phase 1: Structure Generation (Quick, using flash model)
 # =============================================================================
 
-DEMO_STRUCTURE_SYSTEM_PROMPT = """你是一位资深产品经理和前端架构师，擅长规划产品原型的页面结构。
+DEMO_STRUCTURE_SYSTEM_PROMPT = """你是产品经理，负责规划Demo页面结构。
 
-## 任务
-根据产品功能，规划 Demo 的页面结构和导航关系。
+任务：根据功能模块规划页面结构。
 
-## 输出格式
-严格按照 JSON 格式输出：
-{
-    "project_name": "项目名称",
-    "platforms": [
-        {
-            "type": "pc",
-            "subtype": "full",
-            "pages": [
-                {
-                    "id": "page_login",
-                    "name": "登录页",
-                    "path": "/login",
-                    "description": "用户登录界面，支持账号密码登录",
-                    "order": 1,
-                    "transitions": [
-                        {
-                            "trigger": "login_success",
-                            "target_page_id": "page_dashboard",
-                            "state_changes": {"user": "logged_in"}
-                        }
-                    ]
-                }
-            ],
-            "navigation": {
-                "type": "sidebar",
-                "items": ["page_dashboard", "page_settings"]
-            }
-        }
-    ],
-    "shared_state": {
-        "user": null,
-        "theme": "light"
-    }
-}
+输出要求：
+- 只输出JSON，不要任何其他文字
+- 页面数量4-6个
+- 每个页面有id、name、path、description、order字段
 
-## 页面规划原则
-1. 根据功能模块拆分页面，每个核心功能一个页面
-2. 页面数量控制在 4-8 个
-3. 定义清晰的页面跳转关系
-4. 考虑用户操作流程的连贯性
-5. PC 端使用侧边栏导航，移动端使用底部导航
-
-## 注意事项
-- 仅规划结构，不生成代码
-- 确保页面间的跳转逻辑合理
-- 为每个页面提供简洁的描述
+JSON格式示例：
+{"project_name":"项目名","platforms":[{"type":"pc","pages":[{"id":"page_1","name":"首页","path":"/home","description":"主页面","order":1}]}],"shared_state":{}}
 """
 
-DEMO_STRUCTURE_USER_PROMPT = """请根据以下产品信息，规划 Demo 的页面结构：
-
-## 产品信息
-- 产品：{idea}
-- 方向：{direction}
+DEMO_STRUCTURE_USER_PROMPT = """产品：{idea}
+方向：{direction}
 {platform_info}
 
-## 功能模块
+功能：
 {features}
 
-请规划这个产品的页面结构，包括：
-1. 需要哪些页面
-2. 页面之间的跳转关系
-3. 导航结构
-4. 共享状态定义"""
+请输出JSON格式的页面结构。"""
 
 # =============================================================================
 # Phase 2: Page Code Generation (Detailed, using pro model, streaming)
