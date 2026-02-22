@@ -6,15 +6,18 @@
 
 DEMO_STRUCTURE_SYSTEM_PROMPT = """你是产品经理，负责规划Demo页面结构。
 
-任务：根据功能模块规划页面结构。
+## 任务
+根据功能模块规划页面结构，必须同时包含PC端和移动端。
 
-输出要求：
+## 输出要求
 - 只输出JSON，不要任何其他文字
-- 页面数量4-6个
-- 每个页面有id、name、path、description、order字段
+- platforms数组必须包含两个平台：{"type":"pc"} 和 {"type":"mobile"}
+- 每个平台4-6个页面
+- 页面name必须使用中文，如"登录页"、"首页"、"个人中心"
+- 每个页面必须有：id, name, path, description, order
 
-JSON格式示例：
-{"project_name":"项目名","platforms":[{"type":"pc","pages":[{"id":"page_1","name":"首页","path":"/home","description":"主页面","order":1}]}],"shared_state":{}}
+## JSON格式
+{"project_name":"项目名","platforms":[{"type":"pc","pages":[{"id":"pc_home","name":"首页","path":"/home","description":"主页面","order":1}]},{"type":"mobile","pages":[{"id":"m_home","name":"首页","path":"/home","description":"移动端主页","order":1}]}],"shared_state":{}}
 """
 
 DEMO_STRUCTURE_USER_PROMPT = """产品：{idea}
@@ -36,61 +39,63 @@ DEMO_PAGE_SYSTEM_PROMPT = """你是一位全栈开发专家，擅长实现精美
 根据页面定义，生成完整的 React 组件代码。
 
 ## 技术栈
-- React 18 + TypeScript
+- React 18 (不使用TypeScript类型注解)
 - Tailwind CSS
-- 模拟数据（不需要真实后端）
+- 模拟数据
 
-## 代码规范
-- 使用函数式组件和 Hooks
-- 组件命名使用 PascalCase
-- 使用 Tailwind CSS 进行样式设计
-- 添加适当的类型定义
-- 代码可直接运行
+## 代码格式要求（非常重要！）
+1. 组件必须命名为 Page，使用 function Page() { ... }
+2. 不要使用 export 语句
+3. 不要使用 import 语句
+4. 不要使用 TypeScript 类型注解
+5. 不要使用 markdown 代码块
 
-## 输出要求
-直接输出完整的 React 组件代码，不要包含 markdown 代码块标记。
-代码应该是一个完整的、可独立运行的 React 组件。
+## 代码模板
+```
+function Page() {
+  const [state, setState] = useState(initialValue);
 
-## 页面交互规范
-1. 使用 window.postMessage 与父页面通信
-2. 页面跳转使用: window.parent.postMessage({ type: 'navigate', pageId: 'target_page_id', state: {} }, '*')
-3. 读取共享状态: 从 props.sharedState 获取
-4. 更新共享状态: window.parent.postMessage({ type: 'updateState', changes: {} }, '*')
+  return (
+    <div className="...">
+      {/* 页面内容 */}
+    </div>
+  );
+}
+```
+
+## 可用的全局变量
+- React, useState, useEffect, useCallback, useMemo, useRef
+- sharedState: 共享状态对象
+- navigateTo(pageId, stateChanges): 页面跳转函数
+- updateState(changes): 更新共享状态函数
 
 ## UI 设计规范
-- 现代简洁的设计风格
-- 适当的间距和留白
-- 清晰的视觉层次
-- 良好的交互反馈
-- 响应式布局
+- 现代简洁风格，使用 Tailwind CSS
+- 移动端页面宽度适配手机屏幕
+- PC端页面使用合理的最大宽度
+- 包含模拟数据展示效果
 """
 
-DEMO_PAGE_USER_PROMPT = """请为以下页面生成 React 组件代码：
+DEMO_PAGE_USER_PROMPT = """生成页面：{page_name}
 
-## 页面信息
-- 页面名称：{page_name}
-- 页面路径：{page_path}
-- 页面描述：{page_description}
+描述：{page_description}
+平台：{platform_type}
+路径：{page_path}
 
-## 页面跳转
-{transitions}
+产品：{idea}
+方向：{direction}
 
-## 产品上下文
-- 产品：{idea}
-- 方向：{direction}
-- 平台：{platform_type}
-
-## 相关功能
+功能：
 {related_features}
 
-## 共享状态
-{shared_state}
+要求：
+1. 组件必须命名为 function Page()
+2. 不要用 export/import/TypeScript类型
+3. 使用 Tailwind CSS 样式
+4. 包含模拟数据
+5. {platform_type}端适配
 
-请生成这个页面的完整 React 组件代码，确保：
-1. UI 美观，符合现代设计标准
-2. 包含所有描述的功能和交互
-3. 正确实现页面跳转逻辑
-4. 使用模拟数据展示效果"""
+直接输出代码，不要markdown标记。"""
 
 # =============================================================================
 # Page Modification (For user instructions)

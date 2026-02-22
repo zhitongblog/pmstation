@@ -103,10 +103,27 @@ export function DemoPreview({ onNavigate }: DemoPreviewProps) {
     // Add window assignments for all found components
     // This makes them accessible globally for the renderer to find
     const uniqueNames = Array.from(new Set(componentNames));
+
+    // Always ensure 'Page' is assigned if it exists
+    let assignments = '';
     if (uniqueNames.length > 0) {
-      const assignments = uniqueNames
+      assignments = uniqueNames
         .map(name => `if (typeof ${name} !== 'undefined') window.${name} = ${name};`)
         .join('\n');
+    }
+
+    // If no components found but code contains function definitions, try to extract them
+    if (uniqueNames.length === 0) {
+      // Look for any function starting with uppercase letter
+      const anyFuncMatches = Array.from(cleaned.matchAll(/function\s+([A-Z]\w*)/g));
+      if (anyFuncMatches.length > 0) {
+        assignments = anyFuncMatches
+          .map(match => `if (typeof ${match[1]} !== 'undefined') window.${match[1]} = ${match[1]};`)
+          .join('\n');
+      }
+    }
+
+    if (assignments) {
       cleaned = cleaned.trim() + '\n\n// Make components globally accessible\n' + assignments;
     }
 
@@ -162,23 +179,27 @@ export function DemoPreview({ onNavigate }: DemoPreviewProps) {
     try {
       const root = ReactDOM.createRoot(document.getElementById('root'));
 
-      // Find the first defined component function
-      const possibleNames = ['App', 'Page', 'Component', 'LoginPage', 'HomePage', 'DashboardPage', 'Dashboard', 'Login', 'Home', 'Main'];
-      let Component = null;
+      // Find the component - 'Page' is the required name from our prompt
+      let Component = window.Page;
 
-      for (const name of possibleNames) {
-        if (typeof window[name] === 'function') {
-          Component = window[name];
-          break;
+      // Fallback: try other common names
+      if (!Component) {
+        const possibleNames = ['App', 'Component', 'Main', 'Home', 'LoginPage', 'HomePage', 'DashboardPage', 'Dashboard', 'Login'];
+        for (const name of possibleNames) {
+          if (typeof window[name] === 'function') {
+            Component = window[name];
+            break;
+          }
         }
       }
 
-      // If not found, try to find any function starting with uppercase
+      // Last resort: find any PascalCase function
       if (!Component) {
         const allKeys = Object.keys(window);
         for (const key of allKeys) {
-          if (/^[A-Z]/.test(key) && typeof window[key] === 'function' && key !== 'React' && key !== 'ReactDOM' && key !== 'Babel') {
+          if (/^[A-Z]/.test(key) && typeof window[key] === 'function' && !['React', 'ReactDOM', 'Babel', 'Object', 'Array', 'String', 'Number', 'Boolean', 'Function', 'Symbol', 'Error', 'Promise', 'Map', 'Set', 'WeakMap', 'WeakSet', 'Proxy', 'Reflect', 'JSON', 'Math', 'Date', 'RegExp', 'Int8Array', 'Uint8Array', 'Float32Array', 'Float64Array', 'ArrayBuffer', 'DataView', 'URL', 'URLSearchParams', 'Headers', 'Request', 'Response', 'FormData', 'Blob', 'File', 'FileReader', 'TextDecoder', 'TextEncoder'].includes(key)) {
             Component = window[key];
+            console.log('Found component:', key);
             break;
           }
         }
