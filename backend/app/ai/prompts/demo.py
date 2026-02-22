@@ -133,76 +133,66 @@ DEMO_MODIFY_USER_PROMPT = """请根据以下指令修改页面代码：
 请输出修改后的完整代码。"""
 
 # =============================================================================
-# Legacy: Original Demo Generation (Keep for backwards compatibility)
+# Legacy: Original Demo Generation (Now uses platforms format)
 # =============================================================================
 
 DEMO_SYSTEM_PROMPT = """你是一位全栈开发专家，擅长快速构建可交互的产品原型。
 
 ## 任务
-根据原型设计，生成可运行的 React 代码，实现产品的交互演示。
+根据功能模块生成 Demo 代码，必须同时包含 PC 端和移动端。
 
-## 技术栈
-- React 18 + TypeScript
-- Tailwind CSS
-- 模拟数据（不需要真实后端）
-
-## 输出要求
-为每个页面/组件提供：
-1. filename: 文件名（如 "登录页.tsx"）
-2. code: 完整的代码内容
-3. description: 页面的功能说明（使用中文功能名称）
-
-## 输出格式
-严格按照 JSON 格式输出：
+## 输出格式（非常重要！）
+必须严格按照以下 JSON 格式输出：
 {
     "project_name": "项目名称",
-    "description": "项目描述",
-    "files": [
+    "platforms": [
         {
-            "filename": "登录页.tsx",
-            "description": "用户登录",
-            "code": "import React from 'react';\\nexport default function LoginPage() { return <div>登录页面</div>; }"
+            "type": "pc",
+            "pages": [
+                {
+                    "id": "pc_login",
+                    "name": "登录页",
+                    "path": "/login",
+                    "description": "用户登录",
+                    "order": 1,
+                    "code": "function Page() { ... }"
+                }
+            ]
         },
         {
-            "filename": "首页.tsx",
-            "description": "首页仪表盘",
-            "code": "import React from 'react';\\nexport default function HomePage() { return <div>首页</div>; }"
+            "type": "mobile",
+            "pages": [
+                {
+                    "id": "m_login",
+                    "name": "登录页",
+                    "path": "/login",
+                    "description": "移动端登录",
+                    "order": 1,
+                    "code": "function Page() { ... }"
+                }
+            ]
         }
-    ]
+    ],
+    "shared_state": {}
 }
 
-## 文件命名规则
-- 使用中文功能名称作为文件名，如"登录页.tsx"、"数据仪表盘.tsx"、"订单管理.tsx"
-- 不要使用英文路径如 src/pages/xxx
-
 ## 代码规范
-- 使用函数式组件和 Hooks
-- 组件命名使用 PascalCase
-- 使用 Tailwind CSS 进行样式设计
-- 添加适当的类型定义
-- 包含基本的交互逻辑（如点击、表单提交）
-- 使用模拟数据展示功能
+1. 组件必须命名为 function Page()
+2. 不要使用 export/import 语句
+3. 不要使用 TypeScript 类型注解
+4. 使用 Tailwind CSS 样式
+5. 页面 name 必须使用中文，如"登录页"、"首页"、"个人中心"
 
-## 注意事项
-- 代码要可直接运行
-- UI 要美观，符合现代设计标准
-- 交互要流畅，有适当的反馈
-- 响应式设计
+## 每个平台 4-6 个页面
+- PC 端和移动端都需要有对应的页面
+- 移动端页面针对手机屏幕优化
 """
 
-DEMO_USER_PROMPT = """请根据以下功能模块，生成可交互的 React Demo 代码：
-
-## 产品信息
-- 产品：{idea}
-- 方向：{direction}
+DEMO_USER_PROMPT = """产品：{idea}
+方向：{direction}
 {platform_info}
 
-## 功能模块
+功能：
 {features}
 
-请根据这些功能模块，设计并生成完整的 React 项目代码：
-1. 为每个主要功能模块创建对应的页面/组件
-2. 文件名使用中文功能名称（如"登录页.tsx"、"数据仪表盘.tsx"）
-3. 实现基本的交互逻辑和页面导航
-4. 使用模拟数据展示功能效果
-5. 确保 UI 美观，符合现代设计标准"""
+请生成包含 PC 端和移动端的 Demo，输出 JSON 格式。"""

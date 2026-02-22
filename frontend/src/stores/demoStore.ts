@@ -44,15 +44,15 @@ interface NewFormatProject {
 // Convert new format (from updated DemoAgent) to store format
 function convertNewFormatToStoreFormat(data: NewFormatProject): DemoProject {
   const platforms: DemoPlatform[] = data.platforms.map((platform) => {
-    const pages: DemoPage[] = platform.pages.map((page, index) => ({
-      id: page.id || `page_${index}`,
-      name: page.name,
-      path: `/${page.name.toLowerCase().replace(/\s+/g, '-')}`,
-      description: page.description,
-      code: page.code,
-      order: index,
-      status: 'completed' as const,
-      transitions: [],
+    const pages: DemoPage[] = platform.pages.map((page: any, index) => ({
+      id: page.id || `${platform.type}_page_${index}`,
+      name: page.name || `页面${index + 1}`,
+      path: page.path || `/${(page.name || 'page').toLowerCase().replace(/\s+/g, '-')}`,
+      description: page.description || '',
+      code: page.code || '',
+      order: page.order ?? index,
+      status: page.code ? 'completed' as const : 'pending' as const,
+      transitions: page.transitions || [],
     }));
 
     return {
@@ -67,7 +67,7 @@ function convertNewFormatToStoreFormat(data: NewFormatProject): DemoProject {
   });
 
   return {
-    project_name: data.project_name,
+    project_name: data.project_name || '演示项目',
     platforms,
     shared_state: data.shared_state || {},
     generation_metadata: {
@@ -141,8 +141,12 @@ function isLegacyFormat(data: any): data is LegacyDemoProject {
 
 // Check if data is in new format (platforms array but needs conversion)
 function isNewFormat(data: any): data is NewFormatProject {
-  return data && Array.isArray(data.platforms) && data.platforms.length > 0 &&
-    data.platforms[0].pages && !data.platforms[0].navigation;
+  if (!data || !Array.isArray(data.platforms) || data.platforms.length === 0) {
+    return false;
+  }
+  // Has platforms with pages but no navigation (needs conversion)
+  const firstPlatform = data.platforms[0];
+  return firstPlatform.pages && !firstPlatform.navigation;
 }
 
 interface DemoState {
