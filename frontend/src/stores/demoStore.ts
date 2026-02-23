@@ -221,19 +221,37 @@ export const useDemoStore = create<DemoState>((set, get) => ({
   ...initialState,
 
   setDemoProject: (project) => {
+    // Debug: log input data format
+    console.log('[DemoStore] setDemoProject input:', {
+      hasFiles: !!(project as any)?.files,
+      hasPlatforms: !!(project as any)?.platforms,
+      platformsLength: (project as any)?.platforms?.length,
+      firstPlatformPages: (project as any)?.platforms?.[0]?.pages?.length,
+      firstPageName: (project as any)?.platforms?.[0]?.pages?.[0]?.name,
+      hasNavigation: !!(project as any)?.platforms?.[0]?.navigation,
+    });
+
     // Handle all formats: legacy (files), new (platforms without navigation), and store format
     let normalizedProject: DemoProject;
 
     if (isLegacyFormat(project)) {
+      console.log('[DemoStore] Detected LEGACY format (files array)');
       // Convert legacy format (files array) to store format
       normalizedProject = convertLegacyToNewFormat(project as any);
     } else if (isNewFormat(project)) {
+      console.log('[DemoStore] Detected NEW format (platforms without navigation)');
       // Convert new format (platforms without navigation) to store format
       normalizedProject = convertNewFormatToStoreFormat(project as any);
     } else {
+      console.log('[DemoStore] Detected STORE format (already converted)');
       // Already in store format
       normalizedProject = project;
     }
+
+    console.log('[DemoStore] Normalized result:', {
+      platformsLength: normalizedProject.platforms?.length,
+      firstPageName: normalizedProject.platforms?.[0]?.pages?.[0]?.name,
+    });
 
     set({
       demoProject: normalizedProject,

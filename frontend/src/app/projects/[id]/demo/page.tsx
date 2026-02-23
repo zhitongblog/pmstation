@@ -76,15 +76,17 @@ export default function DemoPage() {
     };
   }, [projectId, fetchStages, reset]);
 
-  // Load existing demo when stages are loaded
+  // Load existing demo when stages are loaded (only if no platforms yet)
   useEffect(() => {
     if (isInitialLoading) return;
+    // Don't overwrite if we already have platforms (e.g., from SSE generation)
+    if (platforms.length > 0) return;
 
     const demoStage = stages.find((s) => s.type === 'demo');
     if (demoStage?.output_data && (demoStage.output_data.platforms || demoStage.output_data.files)) {
       setDemoProject(demoStage.output_data as any);
     }
-  }, [stages, isInitialLoading, setDemoProject]);
+  }, [stages, isInitialLoading, platforms.length, setDemoProject]);
 
   // SSE streaming generation
   const startGeneration = useCallback(async () => {
@@ -204,8 +206,8 @@ export default function DemoPage() {
                     ...s,
                     isGenerating: false,
                   }));
-                  // Refresh stages to get updated data
-                  fetchStages(projectId);
+                  // Don't call fetchStages here - SSE already set the correct data
+                  // fetchStages would reload from backend and potentially cause format issues
                   break;
 
                 case 'error':
