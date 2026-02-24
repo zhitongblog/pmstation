@@ -160,6 +160,7 @@ interface DemoState {
 
   // Generation state
   isGenerating: boolean;
+  isPaused: boolean;
   generationProgress: DemoGenerationProgress;
   generatingPageCode: Record<string, string>; // Partial code during generation
 
@@ -178,11 +179,16 @@ interface DemoState {
 
   // Generation actions
   setIsGenerating: (isGenerating: boolean) => void;
+  setPaused: (paused: boolean) => void;
   setGenerationProgress: (progress: Partial<DemoGenerationProgress>) => void;
   appendPageCode: (pageId: string, chunk: string) => void;
   completePageGeneration: (pageId: string, code: string) => void;
   setPageStatus: (pageId: string, status: DemoPage['status']) => void;
   setPageError: (pageId: string, error: string) => void;
+  skipPage: (pageId: string, reason?: string) => void;
+  updatePageCode: (pageId: string, code: string) => void;
+  getFailedPages: () => DemoPage[];
+  getStatusStats: () => { total: number; completed: number; error: number; skipped: number; pending: number; generating: number };
 
   // UI actions
   setError: (error: string | null) => void;
@@ -206,6 +212,7 @@ const initialState = {
   sharedState: {},
   navigationHistory: [] as string[],
   isGenerating: false,
+  isPaused: false,
   generationProgress: {
     totalPages: 0,
     completedPages: 0,
@@ -326,6 +333,8 @@ export const useDemoStore = create<DemoState>((set, get) => ({
 
   setIsGenerating: (isGenerating) => set({ isGenerating }),
 
+  setPaused: (isPaused) => set({ isPaused }),
+
   setGenerationProgress: (progress) => {
     const { generationProgress } = get();
     set({ generationProgress: { ...generationProgress, ...progress } });
@@ -395,6 +404,77 @@ export const useDemoStore = create<DemoState>((set, get) => ({
     }));
 
     set({ platforms: updatedPlatforms });
+  },
+
+  skipPage: (pageId, reason) => {
+    const { platforms } = get();
+
+    const updatedPlatforms = platforms.map((platform) => ({
+      ...platform,
+      pages: platform.pages.map((page) =>
+        page.id === pageId
+          ? { ...page, status: 'skipped' as const, skip_reason: reason }
+          : page
+      ),
+    }));
+
+    set({ platforms: updatedPlatforms });
+  },
+
+  updatePageCode: (pageId, code) => {
+    const { platforms } = get();
+
+    const updatedPlatforms = platforms.map((platform) => ({
+      ...platform,
+      pages: platform.pages.map((page) =>
+        page.id === pageId
+          ? { ...page, code, status: 'completed' as const, error: undefined }
+          : page
+      ),
+    }));
+
+    set({ platforms: updatedPlatforms });
+  },
+
+  getFailedPages: () => {
+    const { platforms } = get();
+    const failedPages: DemoPage[] = [];
+
+    for (const platform of platforms) {
+      for (const page of platform.pages) {
+        if (page.status === 'error') {
+          failedPages.push(page);
+        }
+      }
+    }
+
+    return failedPages;
+  },
+
+  getStatusStats: () => {
+    const { platforms } = get();
+    const stats = {
+      total: 0,
+      completed: 0,
+      error: 0,
+      skipped: 0,
+      pending: 0,
+      generating: 0,
+    };
+
+    for (const platform of platforms) {
+      for (const page of platform.pages) {
+        stats.total++;
+        const status = page.status || 'pending';
+        if (status in stats) {
+          stats[status as keyof typeof stats]++;
+        } else {
+          stats.pending++;
+        }
+      }
+    }
+
+    return stats;
   },
 
   setError: (error) => set({ error }),

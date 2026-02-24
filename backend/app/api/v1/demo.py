@@ -31,6 +31,16 @@ class PageRegenerateRequest(BaseModel):
     pass
 
 
+class PageSkipRequest(BaseModel):
+    """Request body for skipping a page."""
+    reason: str | None = None
+
+
+class PageUpdateRequest(BaseModel):
+    """Request body for updating page code directly."""
+    code: str
+
+
 def sse_event(event_type: str, data: Any) -> str:
     """Format SSE event."""
     json_data = json.dumps(data, ensure_ascii=False)
@@ -446,6 +456,159 @@ async def modify_demo_page(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.post("/projects/{project_id}/demo/pages/{page_id}/skip")
+async def skip_demo_page(
+    project_id: UUID,
+    page_id: str,
+    request: PageSkipRequest,
+    current_user_id: CurrentUserId,
+    db: DbSession,
+):
+    """Mark a page as skipped."""
+    await check_permission(current_user_id, project_id, Permission.EDIT, db)
+
+    # Get current demo data
+    result = await db.execute(
+        select(Stage)
+        .where(Stage.project_id == project_id)
+        .where(Stage.type == "demo")
+        .order_by(Stage.version.desc())
+    )
+    stage = result.scalars().first()
+
+    if not stage or not stage.output_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Demo not found",
+        )
+
+    # Find and update the page
+    page_found = False
+    for platform in stage.output_data.get("platforms", []):
+        for page in platform.get("pages", []):
+            if page.get("id") == page_id:
+                page["status"] = "skipped"
+                if request.reason:
+                    page["skip_reason"] = request.reason
+                page_found = True
+                break
+        if page_found:
+            break
+
+    if not page_found:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Page '{page_id}' not found",
+        )
+
+    # Save to database
+    stage.output_data = stage.output_data  # Mark as modified
+    await db.commit()
+
+    return {"status": "success", "page_id": page_id}
+
+
+@router.put("/projects/{project_id}/demo/pages/{page_id}")
+async def update_demo_page(
+    project_id: UUID,
+    page_id: str,
+    request: PageUpdateRequest,
+    current_user_id: CurrentUserId,
+    db: DbSession,
+):
+    """Update page code directly (manual edit)."""
+    await check_permission(current_user_id, project_id, Permission.EDIT, db)
+
+    # Get current demo data
+    result = await db.execute(
+        select(Stage)
+        .where(Stage.project_id == project_id)
+        .where(Stage.type == "demo")
+        .order_by(Stage.version.desc())
+    )
+    stage = result.scalars().first()
+
+    if not stage or not stage.output_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Demo not found",
+        )
+
+    # Find and update the page
+    page_found = False
+    for platform in stage.output_data.get("platforms", []):
+        for page in platform.get("pages", []):
+            if page.get("id") == page_id:
+                page["code"] = request.code
+                page["status"] = "completed"
+                page.pop("error", None)  # Clear any previous error
+                page_found = True
+                break
+        if page_found:
+            break
+
+    if not page_found:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Page '{page_id}' not found",
+        )
+
+    # Save to database
+    stage.output_data = stage.output_data  # Mark as modified
+    await db.commit()
+
+    return {"status": "success", "page_id": page_id, "code": request.code}
+
+
+@router.get("/projects/{project_id}/demo/status")
+async def get_demo_status(
+    project_id: UUID,
+    current_user_id: CurrentUserId,
+    db: DbSession,
+):
+    """Get demo generation status statistics."""
+    await check_permission(current_user_id, project_id, Permission.VIEW, db)
+
+    result = await db.execute(
+        select(Stage)
+        .where(Stage.project_id == project_id)
+        .where(Stage.type == "demo")
+        .order_by(Stage.version.desc())
+    )
+    stage = result.scalars().first()
+
+    if not stage or not stage.output_data:
+        return {
+            "total": 0,
+            "completed": 0,
+            "error": 0,
+            "skipped": 0,
+            "pending": 0,
+            "generating": 0,
+        }
+
+    # Count pages by status
+    stats = {
+        "total": 0,
+        "completed": 0,
+        "error": 0,
+        "skipped": 0,
+        "pending": 0,
+        "generating": 0,
+    }
+
+    for platform in stage.output_data.get("platforms", []):
+        for page in platform.get("pages", []):
+            stats["total"] += 1
+            page_status = page.get("status", "pending")
+            if page_status in stats:
+                stats[page_status] += 1
+            else:
+                stats["pending"] += 1
+
+    return stats
 
 
 def clean_code(code: str) -> str:

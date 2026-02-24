@@ -204,6 +204,28 @@ export const demoApi = {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     return `${API_URL}/api/v1/projects/${projectId}/demo/modify?token=${token}`;
   },
+
+  skipPage: async (projectId: string, pageId: string, reason?: string): Promise<{ status: string; page_id: string }> => {
+    const { data } = await api.post(`/projects/${projectId}/demo/pages/${pageId}/skip`, { reason });
+    return data;
+  },
+
+  updatePage: async (projectId: string, pageId: string, code: string): Promise<{ status: string; page_id: string; code: string }> => {
+    const { data } = await api.put(`/projects/${projectId}/demo/pages/${pageId}`, { code });
+    return data;
+  },
+
+  getStatus: async (projectId: string): Promise<{
+    total: number;
+    completed: number;
+    error: number;
+    skipped: number;
+    pending: number;
+    generating: number;
+  }> => {
+    const { data } = await api.get(`/projects/${projectId}/demo/status`);
+    return data;
+  },
 };
 
 // Helper to get the base API URL (for SSE connections)

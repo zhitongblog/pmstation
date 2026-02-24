@@ -9,6 +9,7 @@ import {
   DemoPreview,
   DemoCodeView,
   DemoControls,
+  GenerationControlPanel,
 } from './components';
 import {
   Play,
@@ -17,7 +18,7 @@ import {
   RefreshCw,
   CheckCircle,
 } from 'lucide-react';
-import { getApiBaseUrl } from '@/lib/api';
+import { getApiBaseUrl, demoApi } from '@/lib/api';
 
 interface GenerationStatus {
   isGenerating: boolean;
@@ -37,6 +38,7 @@ export default function DemoPage() {
   const {
     platforms,
     viewMode,
+    isPaused,
     reset,
     setDemoProject,
     setPlatforms,
@@ -45,6 +47,9 @@ export default function DemoPage() {
     appendPageCode,
     completePageGeneration,
     setPageStatus,
+    setPaused,
+    skipPage: skipPageInStore,
+    getFailedPages,
   } = useDemoStore();
 
   const [isInitialLoading, setIsInitialLoading] = useState(true);
@@ -267,6 +272,105 @@ export default function DemoPage() {
     await startGeneration();
   };
 
+  // Retry a single failed page
+  const handleRetryPage = useCallback(async (pageId: string) => {
+    const token = localStorage.getItem('token');
+    const apiUrl = getApiBaseUrl();
+    const url = `${apiUrl}/api/v1/projects/${projectId}/demo/pages/${pageId}/regenerate`;
+
+    setPageStatus(pageId, 'generating');
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'text/event-stream',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('No reader available');
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop() || '';
+
+        for (const chunk of lines) {
+          if (!chunk.trim()) continue;
+
+          const eventMatch = chunk.match(/^event:\s*(.+)$/m);
+          const dataMatch = chunk.match(/^data:\s*(.+)$/m);
+
+          if (eventMatch && dataMatch) {
+            const eventType = eventMatch[1];
+            try {
+              const data = JSON.parse(dataMatch[1]);
+
+              switch (eventType) {
+                case 'page_progress':
+                  appendPageCode(data.page_id, data.chunk);
+                  break;
+                case 'page_complete':
+                  completePageGeneration(data.page_id, data.code);
+                  break;
+                case 'error':
+                  setPageStatus(pageId, 'error');
+                  break;
+              }
+            } catch (e) {
+              console.error('Failed to parse SSE data:', e);
+            }
+          }
+        }
+      }
+    } catch (error: any) {
+      console.error('Retry error:', error);
+      setPageStatus(pageId, 'error');
+    }
+  }, [projectId, setPageStatus, appendPageCode, completePageGeneration]);
+
+  // Skip a page
+  const handleSkipPage = useCallback(async (pageId: string) => {
+    try {
+      await demoApi.skipPage(projectId, pageId);
+      skipPageInStore(pageId);
+    } catch (error) {
+      console.error('Skip error:', error);
+    }
+  }, [projectId, skipPageInStore]);
+
+  // Retry all failed pages
+  const handleRetryAllFailed = useCallback(async () => {
+    const failedPages = getFailedPages();
+    for (const page of failedPages) {
+      await handleRetryPage(page.id);
+    }
+  }, [getFailedPages, handleRetryPage]);
+
+  // Pause generation
+  const handlePause = useCallback(() => {
+    setPaused(true);
+  }, [setPaused]);
+
+  // Resume generation
+  const handleResume = useCallback(() => {
+    setPaused(false);
+  }, [setPaused]);
+
   // Loading state
   if (isInitialLoading) {
     return (
@@ -378,10 +482,20 @@ export default function DemoPage() {
         </div>
       )}
 
+      {/* Generation Control Panel */}
+      <GenerationControlPanel
+        onRetryAllFailed={handleRetryAllFailed}
+        onPause={handlePause}
+        onResume={handleResume}
+      />
+
       {/* Main content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar */}
-        <DemoSidebar />
+        <DemoSidebar
+          onRetryPage={handleRetryPage}
+          onSkipPage={handleSkipPage}
+        />
 
         {/* Content area */}
         <div className="flex-1 flex flex-col overflow-hidden">

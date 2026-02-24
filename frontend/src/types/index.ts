@@ -130,7 +130,7 @@ export interface DemoPage {
   description: string;
   code: string;
   order: number;
-  status: 'pending' | 'generating' | 'completed' | 'error';
+  status: 'pending' | 'generating' | 'completed' | 'error' | 'skipped';
   transitions: PageTransition[];
   error?: string;
 }
